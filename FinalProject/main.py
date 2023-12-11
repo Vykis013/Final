@@ -1,49 +1,89 @@
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import pandas as pd
+import time
 
-headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0"}
+# Nustatome webdriver'io kelią
+webdriver_path = "C:/Users/Vykis/Downloads/chromedriver-win64/chromedriver-win64/chromedriver.exe"
+service = Service(webdriver_path)
+service.start()
 
+# Sukuriamas naujas webdriver
+driver = webdriver.Chrome(service=service)
+
+# Funkcija, kuri paspaudžia "More" mygtuką ir laukia, kol bus įkelti nauji rezultatai
+def click_more():
+    try:
+        more_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CLASS_NAME, 'ipc-see-more'))
+        )
+        driver.execute_script("arguments[0].scrollIntoView();", more_button)
+        more_button.click()
+
+        # Laukiame, kol bus įkelti nauji rezultatai
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, '.ipc-metadata-list-summary-item')))
+    except Exception as e:
+        print(f'Klaida paspaudant "More" mygtuką: {e}')
+
+# Sukuriame sąrašą filmų
 movies_list = []
 
-# Galime eiti per betkiek puslapiu
-for page in range(1, 4):
-    url = f"https://www.imdb.com/search/title/?title_type=feature&page={page}"
-    response = requests.get(url, headers=headers)
+url = "https://www.imdb.com/search/title/?title_type=feature"
+driver.get(url)
 
-    soup = BeautifulSoup(response.content, 'html.parser')
-    movies = soup.find_all('li', class_='ipc-metadata-list-summary-item')
+# Scroll to the bottom of the page
+driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+time.sleep(2)  # Wait for the page to load
 
-    for movie in movies:
-        title = movie.find('h3', class_='ipc-title__text').text.strip()
-        movie_details = movie.find_all('span', class_='sc-43986a27-8 jHYIIK dli-title-metadata-item')
-        year = None
-        duration = None
-        rating = None
+# Paspaudžiame "See More" mygtuką 3 kartus
+for i in range(20):
+    click_more()
+    # Scroll to the bottom again after clicking "See More"
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(2)  # Wait for the page to load
 
-        if len(movie_details) >= 1:
-            year = movie_details[0].text.strip()
-        if len(movie_details) >= 2:
-            duration = movie_details[1].text.strip()
-        if len(movie_details) >= 3:
-            rating = movie_details[2].text.strip()
+# Parsisiunčiame HTML
+soup = BeautifulSoup(driver.page_source, 'html.parser')
+movies = soup.find_all('li', class_='ipc-metadata-list-summary-item')
 
-        people_rating = movie.find('span', class_='ipc-rating-star ipc-rating-star--base ipc-rating-star--imdb ratingGroup--imdb-rating')
-        people_rating_text = people_rating.get_text(strip=True).split('(')[0] if people_rating else None
+for movie in movies:
+    title = movie.find('h3', class_='ipc-title__text').text.strip()
+    movie_details = movie.find_all('span', class_='sc-43986a27-8 jHYIIK dli-title-metadata-item')
+    year = None
+    duration = None
+    rating = None
 
-        critic_rating = movie.find('span', class_='sc-b0901df4-0 bcQdDJ metacritic-score-box')
-        critic_rating_text = critic_rating.get_text(strip=True) if critic_rating else None
+    if len(movie_details) >= 1:
+        year = movie_details[0].text.strip()
+    if len(movie_details) >= 2:
+        duration = movie_details[1].text.strip()
+    if len(movie_details) >= 3:
+        rating = movie_details[2].text.strip()
 
-        votes_element = movie.find('div', class_='sc-53c98e73-0 kRnqtn')
-        votes_text = votes_element.text.strip() if votes_element else None
+    people_rating = movie.find('span', class_='ipc-rating-star ipc-rating-star--base ipc-rating-star--imdb ratingGroup--imdb-rating')
+    people_rating_text = people_rating.get_text(strip=True).split('(')[0] if people_rating else None
 
-        # Jei 'Votes' nėra pateikti, priskiriame 'N/A'
-        votes = 'N/A' if votes_text is None else f"{int(float(''.join(filter(str.isdigit, votes_text.replace(',', ''))))) :,}"
+    critic_rating = movie.find('span', class_='sc-b0901df4-0 bcQdDJ metacritic-score-box')
+    critic_rating_text = critic_rating.get_text(strip=True) if critic_rating else None
 
-        movies_list.append({'Pavadinimas': title, 'Metai': year, 'Trukme': duration, 'Filmo indeksas': rating,
-                            'Ivertinimas pagal zmones': people_rating_text, 'Ivertinimas pagal kritikus': critic_rating_text,
-                            'Votes': votes})
+    votes_element = movie.find('div', class_='sc-53c98e73-0 kRnqtn')
+    votes_text = votes_element.text.strip() if votes_element else None
 
+    # Jei 'Votes' nėra pateikti, priskiriame 'N/A'
+    votes = 'N/A' if votes_text is None else f"{int(float(''.join(filter(str.isdigit, votes_text.replace(',', ''))))) :,}"
+
+    movies_list.append({'Pavadinimas': title, 'Metai': year, 'Trukme': duration, 'Filmo indeksas': rating,
+                        'Ivertinimas pagal zmones': people_rating_text, 'Ivertinimas pagal kritikus': critic_rating_text,
+                        'Votes': votes})
+
+# Uždarome webdriver
+driver.quit()
+
+# Sukuriame DataFrame ir išsaugome į CSV
 df = pd.DataFrame(movies_list)
-df.to_csv("imdbEGLv1.csv", index=False)
+df.to_csv("EGL_sel2.csv", index=False)
 print(df)
