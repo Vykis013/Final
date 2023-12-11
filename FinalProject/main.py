@@ -27,7 +27,7 @@ def click_more():
         # Laukiame, kol bus įkelti nauji rezultatai
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, '.ipc-metadata-list-summary-item')))
     except Exception as e:
-        print(f'Klaida paspaudant "More" mygtuką: {e}')
+        pass
 
 # Sukuriame sąrašą filmų
 movies_list = []
@@ -35,16 +35,16 @@ movies_list = []
 url = "https://www.imdb.com/search/title/?title_type=feature"
 driver.get(url)
 
-# Scroll to the bottom of the page
+# Puslapio scrolinimas
 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-time.sleep(2)  # Wait for the page to load
+time.sleep(3)  # Ukrovimo laikas
 
-# Paspaudžiame "See More" mygtuką 3 kartus
-for i in range(20):
+# Paspaudžiame "See More" mygtuką 25 kartu
+for i in range(25):
     click_more()
-    # Scroll to the bottom again after clicking "See More"
+    # Scrollinam
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(2)  # Wait for the page to load
+    time.sleep(3)  # Laukiam kol uzkrauna
 
 # Parsisiunčiame HTML
 soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -85,5 +85,5 @@ driver.quit()
 
 # Sukuriame DataFrame ir išsaugome į CSV
 df = pd.DataFrame(movies_list)
-df.to_csv("EGL_sel2.csv", index=False)
+df.to_csv("IMDB25.csv", index=False)
 print(df)
